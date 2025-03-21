@@ -1,0 +1,34 @@
+{
+  "name": "pixel",
+  "version": "0.0.0-alpha",
+  "description": "A simple, lightweight library for interacting with the Pexels API.",
+  "type": "module",
+  "main": "./dist/pixel.js",
+  "scripts": {
+    "test": "mocha",
+    "dev": "node npm-script/dev.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/natsie/pixel.git"
+  },
+  "keywords": [
+    "pexels",
+    "picture",
+    "royalty-free",
+    "api"
+  ],
+  "author": "Oghenevwegba Obire",
+  "license": "MIT OR Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/natsie/pixel/issues"
+  },
+  "homepage": "https://github.com/natsie/pixel#readme",
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "chai": "^5.2.0",
+    "chai-as-promised": "^8.0.1",
+    "mocha": "^11.1.0",
+    "typescript": "^5.8.2"
+  }
+}
