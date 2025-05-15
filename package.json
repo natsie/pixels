@@ -1,5 +1,5 @@
 {
-  "name": "pexie",
+  "name": "pexel",
   "version": "0.0.0-alpha",
   "description": "A simple, lightweight library for interacting with the Pexels API.",
   "type": "module",
