@@ -1,16 +1,16 @@
 {
-  "name": "pixel",
+  "name": "pexie",
   "version": "0.0.0-alpha",
   "description": "A simple, lightweight library for interacting with the Pexels API.",
   "type": "module",
-  "main": "./dist/pixel.js",
+  "main": "./dist/pexie.js",
   "scripts": {
     "test": "mocha",
     "dev": "node npm-script/dev.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/natsie/pixel.git"
+    "url": "git+https://github.com/natsie/pexie.git"
   },
   "keywords": [
     "pexels",
@@ -21,9 +21,9 @@
   "author": "Oghenevwegba Obire",
   "license": "MIT OR Apache-2.0",
   "bugs": {
-    "url": "https://github.com/natsie/pixel/issues"
+    "url": "https://github.com/natsie/pexie/issues"
   },
-  "homepage": "https://github.com/natsie/pixel#readme",
+  "homepage": "https://github.com/natsie/pexie#readme",
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "chai": "^5.2.0",

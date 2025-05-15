@@ -1,42 +1,56 @@
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
     if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
     if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
     return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
 };
-var _PixelClient_instances, _a, _PixelClient_retrieveDataFromEndpoint;
-class PixelCache extends Map {
+var _a, _PexieClient_retrieveDataFromEndpoint;
+class PexieCache extends Map {
     constructor() {
         super(...arguments);
         this.maxage = 5000;
         this.maxentries = 100;
         this.entryorder = [];
+        this.timeouts = {};
     }
     set(key, value, age = this.maxage) {
         super.set(key, value);
         this.entryorder.push(key);
         if (this.entryorder.length > this.maxentries) {
             const oldest = this.entryorder.shift();
-            if (oldest)
+            if (oldest) {
                 super.delete(oldest);
+                delete this.timeouts[oldest];
+                clearTimeout(this.timeouts[oldest]);
+            }
         }
-        setTimeout(() => this.delete(key), age);
+        clearTimeout(this.timeouts[`${key}`]);
+        this.timeouts[`${key}`] = setTimeout(() => this.delete(key), age);
         return this;
     }
 }
-class PixelClient {
+class PexieClient {
     constructor(apiKey) {
-        _PixelClient_instances.add(this);
+        _PexieClient_retrieveDataFromEndpoint.set(this, async function (endpointId, parameters) {
+            const endpoint = _a.endpoints[endpointId];
+            if (!endpoint)
+                throw new Error("Invalid endpoint ID");
+            const endpointUrl = endpoint.replace(/\{\{(\d+)\}\}/g, (match, index) => parameters[index] || "");
+            if (this.cache.has(endpointUrl))
+                return this.cache.get(endpointUrl);
+            const res = await fetch(endpointUrl, {
+                mode: "no-cors",
+                headers: {
+                    Authorization: this.apikey,
+                },
+            });
+            if (!res.ok)
+                throw res;
+            const data = await res.json();
+            this.cache.set(endpointUrl, data, ["image", "video"].includes(endpoint) ? 86400 : undefined);
+            return data;
+        });
         this.apikey = apiKey;
-        this.cache = new PixelCache();
+        this.cache = new PexieCache();
         this.image = {
             search: this.searchImages.bind(this),
             get: this.getImage.bind(this),
@@ -48,29 +62,29 @@ class PixelClient {
     }
     getImage(id) {
         if (typeof id === "string")
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "image", [id]);
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "image", [id]);
         if (typeof id === "number")
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "image", [`${id}`]);
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "image", [`${id}`]);
         if (typeof id === "object")
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "image", [id.id]);
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "image", [id.id]);
         throw new TypeError("Invalid image ID");
     }
     getVideo(id) {
         if (typeof id === "string")
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "video", [id]);
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "video", [id]);
         if (typeof id === "number")
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "video", [`${id}`]);
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "video", [`${id}`]);
         if (typeof id === "object")
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "video", [id.id]);
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "video", [id.id]);
         throw new TypeError("Invalid video ID");
     }
     getCuratedImages(...args) {
         const params = ["", ""];
         if (typeof args[0] === "string") {
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "imagecurated", params.map((v, i) => args[i] || v));
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "imagecurated", params.map((v, i) => args[i] || v));
         }
         if (Array.isArray(args[0])) {
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "imagecurated", params.map((v, i) => String(args[0][i]) || v));
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "imagecurated", params.map((v, i) => String(args[0][i]) || v));
         }
         if (typeof args[0] === "object") {
             const parameterpositions = _a.parameterpositions.get("imagecurated");
@@ -83,17 +97,17 @@ class PixelClient {
                 const pos = parameterpositions[key];
                 params[pos] = value !== null && value !== void 0 ? value : params[pos];
             }
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "imagecurated", params);
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "imagecurated", params);
         }
         throw new TypeError("Invalid curated images parameters");
     }
     getPopularVideos(...args) {
         const params = ["", ""];
         if (typeof args[0] === "string") {
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "videopopular", params.map((v, i) => args[i] || v));
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "videopopular", params.map((v, i) => args[i] || v));
         }
         if (Array.isArray(args[0])) {
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "videopopular", params.map((v, i) => String(args[0][i]) || v));
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "videopopular", params.map((v, i) => String(args[0][i]) || v));
         }
         if (typeof args[0] === "object") {
             const parameterpositions = _a.parameterpositions.get("videopopular");
@@ -110,17 +124,17 @@ class PixelClient {
                 const pos = parameterpositions[key];
                 params[pos] = value !== null && value !== void 0 ? value : params[pos];
             }
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "videopopular", params);
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "videopopular", params);
         }
         throw new TypeError("Invalid popular videos parameters");
     }
     searchImages(...args) {
         const params = Array(7).fill("");
         if (typeof args[0] === "string") {
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "imagesearch", params.map((v, i) => args[i] || v));
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "imagesearch", params.map((v, i) => args[i] || v));
         }
         if (Array.isArray(args[0])) {
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "imagesearch", params.map((v, i) => String(args[0][i]) || v));
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "imagesearch", params.map((v, i) => String(args[0][i]) || v));
         }
         if (typeof args[0] === "object") {
             const parameterpositions = _a.parameterpositions.get("imagesearch");
@@ -133,22 +147,22 @@ class PixelClient {
                 color: args[0].color,
                 locale: args[0].locale,
                 page: args[0].page,
-                per_page: args[0].per_page
+                per_page: args[0].per_page,
             })) {
                 const pos = parameterpositions[key];
                 params[pos] = value !== null && value !== void 0 ? value : params[pos];
             }
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "imagesearch", params);
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "imagesearch", params);
         }
         throw new TypeError("Invalid search parameters");
     }
     searchVideos(...args) {
         const params = Array(6).fill("");
         if (typeof args[0] === "string") {
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "videosearch", params.map((v, i) => args[i] || v));
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "videosearch", params.map((v, i) => args[i] || v));
         }
         if (Array.isArray(args[0])) {
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "videosearch", params.map((v, i) => String(args[0][i]) || v));
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "videosearch", params.map((v, i) => String(args[0][i]) || v));
         }
         if (typeof args[0] === "object") {
             const parameterpositions = _a.parameterpositions.get("videosearch");
@@ -160,40 +174,18 @@ class PixelClient {
                 size: args[0].size,
                 locale: args[0].locale,
                 page: args[0].page,
-                per_page: args[0].per_page
+                per_page: args[0].per_page,
             })) {
                 const pos = parameterpositions[key];
                 params[pos] = value !== null && value !== void 0 ? value : params[pos];
             }
-            return __classPrivateFieldGet(this, _PixelClient_instances, "m", _PixelClient_retrieveDataFromEndpoint).call(this, "videosearch", params);
+            return __classPrivateFieldGet(this, _PexieClient_retrieveDataFromEndpoint, "f").call(this, "videosearch", params);
         }
         throw new TypeError("Invalid search parameters");
     }
 }
-_a = PixelClient, _PixelClient_instances = new WeakSet(), _PixelClient_retrieveDataFromEndpoint = function _PixelClient_retrieveDataFromEndpoint(endpointId, parameters) {
-    const endpoint = _a.endpoints[endpointId];
-    if (!endpoint)
-        throw new Error("Invalid endpoint ID");
-    const endpointUrl = endpoint.replace(/\{\{(\d+)\}\}/g, (match, index) => parameters[index] || "");
-    if (this.cache.has(endpointUrl))
-        return Promise.resolve(this.cache.get(endpointUrl));
-    return fetch(endpointUrl, {
-        mode: "no-cors",
-        headers: {
-            Authorization: this.apikey,
-        },
-    })
-        .then((res) => {
-        if (!res.ok)
-            throw res;
-        return res.json();
-    })
-        .then((data) => {
-        this.cache.set(endpointUrl, data, ["image", "video"].includes(endpoint) ? 86400 : undefined);
-        return data;
-    });
-};
-PixelClient.endpoints = {
+_a = PexieClient, _PexieClient_retrieveDataFromEndpoint = new WeakMap();
+PexieClient.endpoints = {
     image: "https://api.pexels.com/v1/photos/{{0}}",
     video: "https://api.pexels.com/videos/videos/{{0}}",
     imagesearch: "https://api.pexels.com/v1/search/?query={{0}}&orientation={{1}}&size={{2}}&color={{3}}&locale={{4}}&page={{5}}&per_page={{6}}",
@@ -201,7 +193,7 @@ PixelClient.endpoints = {
     imagecurated: "https://api.pexels.com/v1/curated/?page={{0}}&per_page={{1}}",
     videopopular: "https://api.pexels.com/videos/popular/?min_width={{0}}&min_height={{1}}&min_duration={{2}}&max_duration={{3}}&page={{4}}&per_page={{5}}",
 };
-PixelClient.parameterpositions = new Map([
+PexieClient.parameterpositions = new Map([
     ["image", { id: 0 }],
     ["video", { id: 0 }],
     [
@@ -215,21 +207,21 @@ PixelClient.parameterpositions = new Map([
         { min_width: 0, min_height: 1, min_duration: 2, max_duration: 3, page: 4, per_page: 5 },
     ],
 ]);
-export function createPixelClient(key) {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (!(key && typeof key === "string")) {
-            throw new TypeError("API key must be a string");
-        }
-        const testStatus = yield fetch("https://api.pexels.com/v1/photos/2014422", {
-            mode: "no-cors",
-            headers: {
-                Authorization: key,
-            },
-        })
-            .then((res) => res.status)
-            .catch((_) => 0);
-        if (testStatus === 200)
-            return new PixelClient(key);
-        throw new Error("Invalid API key");
-    });
+async function createPexieClient(key) {
+    if (!(key && typeof key === "string")) {
+        throw new TypeError("API key must be a string");
+    }
+    const testStatus = await fetch("https://api.pexels.com/v1/photos/2014422", {
+        mode: "no-cors",
+        headers: {
+            Authorization: key,
+        },
+    })
+        .then((res) => res.status)
+        .catch((_) => 0);
+    if (testStatus === 200)
+        return new PexieClient(key);
+    throw new Error("Invalid API key");
 }
+export { createPexieClient, PexieClient };
+//# sourceMappingURL=pexie.js.map

@@ -1,20 +1,29 @@
-class PixelCache extends Map<string, object> {
+import type { Photo, Video, RetrieveDataFromEndpoint, Response as APIResponse } from "./types";
+
+class PexieCache extends Map<string, object> {
   maxage = 5000;
   maxentries = 100;
   entryorder: string[] = [];
+  timeouts: Record<string, ReturnType<typeof setTimeout>> = {};
   set(key: string, value: object, age = this.maxage) {
     super.set(key, value);
     this.entryorder.push(key);
     if (this.entryorder.length > this.maxentries) {
       const oldest = this.entryorder.shift();
-      if (oldest) super.delete(oldest);
+      if (oldest) {
+        super.delete(oldest);
+        delete this.timeouts[oldest];
+        clearTimeout(this.timeouts[oldest]);
+      }
     }
-    setTimeout(() => this.delete(key), age);
+
+    clearTimeout(this.timeouts[`${key}`]);
+    this.timeouts[`${key}`] = setTimeout(() => this.delete(key), age);
     return this;
   }
 }
 
-class PixelClient {
+class PexieClient {
   static endpoints = {
     image: "https://api.pexels.com/v1/photos/{{0}}",
     video: "https://api.pexels.com/videos/videos/{{0}}",
@@ -28,7 +37,7 @@ class PixelClient {
   };
 
   static parameterpositions = new Map<
-    keyof typeof PixelClient.endpoints,
+    keyof typeof PexieClient.endpoints,
     { [index: string]: number }
   >([
     ["image", { id: 0 }],
@@ -46,18 +55,20 @@ class PixelClient {
   ]);
 
   apikey: string;
-  cache: PixelCache;
+  cache: PexieCache;
   image: {
-    search: (...args: (string | string[] | { [index: string]: string })[]) => Promise<object>;
-    get: (id: string | { id: string }) => Promise<object>;
+    // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+    search: (...args: any[]) => Promise<APIResponse.Photo.Search>;
+    get: (id: string | { id: string }) => Promise<Photo>;
   };
   video: {
-    search: (...args: (string | string[] | { [index: string]: string })[]) => Promise<object>;
-    get: (id: string | { id: string }) => Promise<object>;
+    // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+    search: (...args: any[]) => Promise<APIResponse.Video.Search>;
+    get: (id: string | { id: string }) => Promise<Video>;
   };
   constructor(apiKey: string) {
     this.apikey = apiKey;
-    this.cache = new PixelCache();
+    this.cache = new PexieCache();
     this.image = {
       search: this.searchImages.bind(this),
       get: this.getImage.bind(this),
@@ -68,8 +79,12 @@ class PixelClient {
     };
   }
 
-  #retrieveDataFromEndpoint(endpointId: keyof typeof PixelClient.endpoints, parameters: string[]) {
-    const endpoint = PixelClient.endpoints[endpointId];
+  #retrieveDataFromEndpoint: RetrieveDataFromEndpoint = async function (
+    this: PexieClient,
+    endpointId: keyof typeof PexieClient.endpoints,
+    parameters: string[],
+  ) {
+    const endpoint = PexieClient.endpoints[endpointId];
     if (!endpoint) throw new Error("Invalid endpoint ID");
 
     const endpointUrl = endpoint.replace(
@@ -77,42 +92,37 @@ class PixelClient {
       (match, index) => parameters[index] || "",
     );
 
-    if (this.cache.has(endpointUrl)) return Promise.resolve(this.cache.get(endpointUrl) as object);
-    return fetch(endpointUrl, {
+    if (this.cache.has(endpointUrl)) return this.cache.get(endpointUrl);
+    const res = await fetch(endpointUrl, {
       mode: "no-cors",
       headers: {
         Authorization: this.apikey,
       },
-    })
-      .then((res) => {
-        if (!res.ok) throw res;
-        return res.json();
-      })
-      .then((data) => {
-        this.cache.set(
-          endpointUrl,
-          data as object,
-          ["image", "video"].includes(endpoint) ? 86400 : undefined,
-        );
-        return data as object;
-      });
-  }
+    });
 
-  getImage(id: string | { id: string }) {
+    if (!res.ok) throw res;
+    const data = await res.json();
+    this.cache.set(endpointUrl, data, ["image", "video"].includes(endpoint) ? 86400 : undefined);
+    return data;
+  };
+
+  getImage(id: string | number | { id: string }): Promise<Photo> {
     if (typeof id === "string") return this.#retrieveDataFromEndpoint("image", [id]);
     if (typeof id === "number") return this.#retrieveDataFromEndpoint("image", [`${id}`]);
     if (typeof id === "object") return this.#retrieveDataFromEndpoint("image", [id.id]);
     throw new TypeError("Invalid image ID");
   }
 
-  getVideo(id: string | { id: string }) {
+  getVideo(id: string | number | { id: string }): Promise<Video> {
     if (typeof id === "string") return this.#retrieveDataFromEndpoint("video", [id]);
     if (typeof id === "number") return this.#retrieveDataFromEndpoint("video", [`${id}`]);
     if (typeof id === "object") return this.#retrieveDataFromEndpoint("video", [id.id]);
     throw new TypeError("Invalid video ID");
   }
 
-  getCuratedImages(...args: (string | string[] | { [index: string]: string })[]) {
+  getCuratedImages(
+    ...args: (string | string[] | { [index: string]: string })[]
+  ): Promise<APIResponse.Photo.Curated> {
     const params = ["", ""];
     if (typeof args[0] === "string") {
       return this.#retrieveDataFromEndpoint(
@@ -127,7 +137,7 @@ class PixelClient {
       );
     }
     if (typeof args[0] === "object") {
-      const parameterpositions = PixelClient.parameterpositions.get("imagecurated");
+      const parameterpositions = PexieClient.parameterpositions.get("imagecurated");
       if (!parameterpositions) throw new Error(); // this will never run
       for (const [key, value] of Object.entries({
         page: args[0].page,
@@ -143,7 +153,9 @@ class PixelClient {
     throw new TypeError("Invalid curated images parameters");
   }
 
-  getPopularVideos(...args: (string | string[] | { [index: string]: string })[]) {
+  getPopularVideos(
+    ...args: (string | string[] | { [index: string]: string })[]
+  ): Promise<APIResponse.Video.Popular> {
     const params = ["", ""];
     if (typeof args[0] === "string") {
       return this.#retrieveDataFromEndpoint(
@@ -158,7 +170,7 @@ class PixelClient {
       );
     }
     if (typeof args[0] === "object") {
-      const parameterpositions = PixelClient.parameterpositions.get("videopopular");
+      const parameterpositions = PexieClient.parameterpositions.get("videopopular");
       if (!parameterpositions) throw new Error(); // this will never run
       for (const [key, value] of Object.entries({
         min_width: args[0].min_width,
@@ -178,7 +190,9 @@ class PixelClient {
     throw new TypeError("Invalid popular videos parameters");
   }
 
-  searchImages(...args: (string | string[] | { [index: string]: string })[]) {
+  searchImages(
+    ...args: (string | string[] | { [index: string]: string })[]
+  ): Promise<APIResponse.Photo.Search> {
     const params = Array(7).fill("");
     if (typeof args[0] === "string") {
       return this.#retrieveDataFromEndpoint(
@@ -193,7 +207,7 @@ class PixelClient {
       );
     }
     if (typeof args[0] === "object") {
-      const parameterpositions = PixelClient.parameterpositions.get("imagesearch");
+      const parameterpositions = PexieClient.parameterpositions.get("imagesearch");
       if (!parameterpositions) throw new Error(); // this will never run
       for (const [key, value] of Object.entries({
         query: args[0].query,
@@ -202,7 +216,7 @@ class PixelClient {
         color: args[0].color,
         locale: args[0].locale,
         page: args[0].page,
-        per_page: args[0].per_page
+        per_page: args[0].per_page,
       })) {
         const pos = parameterpositions[key];
         params[pos] = value ?? params[pos];
@@ -214,7 +228,9 @@ class PixelClient {
     throw new TypeError("Invalid search parameters");
   }
 
-  searchVideos(...args: (string | string[] | { [index: string]: string })[]) {
+  searchVideos(
+    ...args: (string | string[] | { [index: string]: string })[]
+  ): Promise<APIResponse.Video.Search> {
     const params = Array(6).fill("");
     if (typeof args[0] === "string") {
       return this.#retrieveDataFromEndpoint(
@@ -229,7 +245,7 @@ class PixelClient {
       );
     }
     if (typeof args[0] === "object") {
-      const parameterpositions = PixelClient.parameterpositions.get("videosearch");
+      const parameterpositions = PexieClient.parameterpositions.get("videosearch");
       if (!parameterpositions) throw new Error(); // this will never run
       for (const [key, value] of Object.entries({
         query: args[0].query,
@@ -237,7 +253,7 @@ class PixelClient {
         size: args[0].size,
         locale: args[0].locale,
         page: args[0].page,
-        per_page: args[0].per_page
+        per_page: args[0].per_page,
       })) {
         const pos = parameterpositions[key];
         params[pos] = value ?? params[pos];
@@ -250,7 +266,7 @@ class PixelClient {
   }
 }
 
-export async function createPixelClient(key: string) {
+async function createPexieClient(key: string): Promise<PexieClient> {
   if (!(key && typeof key === "string")) {
     throw new TypeError("API key must be a string");
   }
@@ -264,6 +280,8 @@ export async function createPixelClient(key: string) {
     .then((res) => res.status)
     .catch((_) => 0);
 
-  if (testStatus === 200) return new PixelClient(key);
+  if (testStatus === 200) return new PexieClient(key);
   throw new Error("Invalid API key");
 }
+
+export { createPexieClient, PexieClient };
